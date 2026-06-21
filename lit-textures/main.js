@@ -9,9 +9,10 @@ import { makeSemiTruck } from '../assets/semi-truck.js';
 // What this experiment demonstrates (see ../references/threejs-docs.md):
 //   1. r132 color management (encoding/sRGBEncoding — NOT the newer colorSpace API).
 //   2. Image-based lighting from RoomEnvironment + PMREMGenerator, with no asset files.
-//   3. A roughness x metalness sphere chart so you can SEE what those knobs do.
-//   4. A procedurally-textured floor: an sRGB color map + a linear data (roughness)
-//      map, with tiling + anisotropy — the full texture pipeline in miniature.
+//   3. A cloud of spheres scattered through the full 360° view, each with a random
+//      color and one of several procedural textures / material finishes.
+//   4. A fleet of semi trucks flying through at varied angles. No ground plane, so
+//      everything just intersects — the trucks pass through the spheres (and you).
 //
 // The stereo render / lensShift / iOS entry / look-controls plumbing is lifted
 // verbatim from hello-world; only the scene contents and renderer setup differ.
@@ -83,75 +84,132 @@ function renderStereo() {
   renderer.setScissorTest(false);
 }
 
-// ---- The roughness x metalness sphere chart --------------------------------
-// A grid you can study by turning your head. Left->right: roughness 0..1.
-// Bottom->top: metalness 0..1. All the same base color, all lit only by the IBL
-// + key light. This is the single best way to feel what PBR materials do.
-const GRID = 5;
-const SPACING = 0.62;
-const sphereGeo = new THREE.SphereGeometry(0.26, 48, 32);
-const chart = new THREE.Group();
-for (let yi = 0; yi < GRID; yi++) {
-  for (let xi = 0; xi < GRID; xi++) {
-    const mat = new THREE.MeshStandardMaterial({
-      color: 0x9aa7b4,
-      roughness: xi / (GRID - 1),
-      metalness: yi / (GRID - 1),
-      envMapIntensity: 1.0,
-    });
-    const s = new THREE.Mesh(sphereGeo, mat);
-    s.position.set(
-      (xi - (GRID - 1) / 2) * SPACING,
-      (yi - (GRID - 1) / 2) * SPACING,
-      0
-    );
-    chart.add(s);
-  }
-}
-chart.position.set(0, 1.6, -3.2); // centered straight ahead at eye height
-scene.add(chart);
+// ---- Procedural textures (a small library to draw from) --------------------
+// A handful of CanvasTextures, no asset files. These are COLOR maps, so each gets
+// `encoding = sRGBEncoding` (see color-vs-data note in references/threejs-docs.md).
+const rand = (a, b) => a + Math.random() * (b - a);
+const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
-// A couple of saturated accent spheres off to the sides, so you have reasons to
-// turn your head and watch reflections/highlights slide across them.
-const accents = [];
-for (let i = 0; i < 2; i++) {
-  const m = new THREE.Mesh(
-    new THREE.SphereGeometry(0.45, 48, 32),
-    new THREE.MeshStandardMaterial({
-      color: i ? 0xd25a3b : 0x3b7dd2,
-      roughness: 0.18, metalness: 0.9, envMapIntensity: 1.0,
-    })
-  );
-  m.position.set(i ? 3.2 : -3.2, 1.4, -1.5);
-  scene.add(m);
-  accents.push(m);
+function makeTex(draw) {
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  draw(c.getContext('2d'), 256);
+  const t = new THREE.CanvasTexture(c);
+  t.encoding = THREE.sRGBEncoding;              // color map
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return t;
 }
 
-// ---- Trucks driving through, each on a different heading -------------------
-// There's deliberately no ground plane, so the trucks fly at eye height and
-// pass straight THROUGH the sphere chart (no collision — intersection is the
-// point). Forward is -Z in the truck's local space, so rotating .y aims it; the
-// rig then slides along its own forward each frame and loops over RANGE.
-const CENTER = new THREE.Vector3(0, 0, -2.5); // the volume they cross through
-const RANGE = 28;                             // travel length before looping
-const TRUCK_DEFS = [
-  { heading: 0.0,             speed: 3.2, y: 1.60, side: 0.0,  cabColor: 0xcc2222 }, // drives away down -Z
-  { heading: Math.PI * 0.5,  speed: 2.6, y: 1.75, side: 0.5,  cabColor: 0x2e7d32 }, // crosses toward -X
-  { heading: -Math.PI * 0.5, speed: 2.9, y: 1.45, side: -0.6, cabColor: 0xf2a900 }, // crosses toward +X
+// Each maker takes two hex colors so the same pattern comes in many palettes.
+const TEXTURE_MAKERS = [
+  (a, b) => makeTex((ctx, s) => {                // checkerboard
+    const n = 8, cell = s / n;
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+      ctx.fillStyle = (x + y) % 2 ? a : b;
+      ctx.fillRect(x * cell, y * cell, cell, cell);
+    }
+  }),
+  (a, b) => makeTex((ctx, s) => {                // vertical stripes
+    const n = 8, cell = s / n;
+    for (let x = 0; x < n; x++) { ctx.fillStyle = x % 2 ? a : b; ctx.fillRect(x * cell, 0, cell, s); }
+  }),
+  (a, b) => makeTex((ctx, s) => {                // polka dots
+    ctx.fillStyle = b; ctx.fillRect(0, 0, s, s);
+    ctx.fillStyle = a;
+    for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) {
+      ctx.beginPath(); ctx.arc((x + 0.5) * s / 4, (y + 0.5) * s / 4, s / 14, 0, Math.PI * 2); ctx.fill();
+    }
+  }),
+  (a, b) => makeTex((ctx, s) => {                // grid lines
+    ctx.fillStyle = b; ctx.fillRect(0, 0, s, s);
+    ctx.strokeStyle = a; ctx.lineWidth = 6;
+    for (let i = 0; i <= 8; i++) {
+      const p = i * s / 8;
+      ctx.beginPath(); ctx.moveTo(p, 0); ctx.lineTo(p, s); ctx.moveTo(0, p); ctx.lineTo(s, p); ctx.stroke();
+    }
+  }),
 ];
-const trucks = TRUCK_DEFS.map((d, i) => {
-  const g = makeSemiTruck(THREE, { scale: 0.26, cabColor: d.cabColor });
-  g.rotation.y = d.heading;
-  // Local -Z under a Y-rotation maps to this world forward; perp is 90° off it.
-  const fwd = new THREE.Vector3(-Math.sin(d.heading), 0, -Math.cos(d.heading));
-  const perp = new THREE.Vector3(-Math.cos(d.heading), 0, Math.sin(d.heading));
-  // Start half a range "behind" center along forward, nudged sideways, at eye height.
+
+// A palette to draw sphere colors / texture inks from.
+const PALETTE = [
+  '#e8523b', '#f2a900', '#3b7dd2', '#2e9e5b', '#9b59b6',
+  '#e84393', '#1abc9c', '#e67e22', '#ecf0f1', '#34495e',
+];
+
+// ---- A cloud of spheres scattered through the full 360° view ---------------
+// Random position (any direction, any elevation, varied distance), random size,
+// random color, and a random finish: textured, glossy metal, or matte plastic.
+// No two runs look the same. They're lit only by the IBL + key light.
+const SPHERE_COUNT = 34;
+const spheres = [];
+for (let i = 0; i < SPHERE_COUNT; i++) {
+  const r = rand(0.18, 0.6);
+  const geo = new THREE.SphereGeometry(r, 40, 28);
+  const baseColor = new THREE.Color(pick(PALETTE));
+
+  // Roll a finish: ~45% textured, ~25% mirror-ish metal, ~30% matte.
+  const roll = Math.random();
+  const matOpts = { color: baseColor, envMapIntensity: 1.0 };
+  if (roll < 0.45) {
+    const tex = pick(TEXTURE_MAKERS)(pick(PALETTE), pick(PALETTE));
+    tex.repeat.set(Math.round(rand(1, 4)), Math.round(rand(1, 4)));
+    matOpts.map = tex;
+    matOpts.roughness = rand(0.3, 0.9);
+    matOpts.metalness = rand(0.0, 0.3);
+  } else if (roll < 0.70) {
+    matOpts.roughness = rand(0.05, 0.3);        // polished metal — reflects the room
+    matOpts.metalness = rand(0.8, 1.0);
+  } else {
+    matOpts.roughness = rand(0.6, 1.0);         // matte
+    matOpts.metalness = 0.0;
+  }
+
+  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial(matOpts));
+
+  // Spherical placement around the viewer (eye at y≈1.6): full azimuth, a wide
+  // band of elevation, varied distance. cos(elev) keeps the radius honest.
+  const azim = rand(0, Math.PI * 2);
+  const elev = rand(-0.55, 1.05);
+  const dist = rand(2.4, 8.5);
+  const hr = Math.cos(elev) * dist;
+  mesh.position.set(
+    Math.sin(azim) * hr,
+    1.6 + Math.sin(elev) * dist,
+    Math.cos(azim) * hr
+  );
+  scene.add(mesh);
+  spheres.push(mesh);
+}
+
+// ---- A fleet of trucks flying through at varied angles ---------------------
+// No ground plane, so each truck flies on its own heading AND a slight up/down
+// pitch — they cross through the sphere cloud (and you) from every direction.
+// We aim the rig with a quaternion (heading + pitch), then slide it along its own
+// local forward (-Z) each frame, looping over RANGE.
+const CENTER = new THREE.Vector3(0, 1.4, 0); // the volume they all cross through
+const RANGE = 34;                            // travel length before looping
+const TRUCK_FLEET = 6;
+const _up = new THREE.Vector3(0, 1, 0);
+const trucks = Array.from({ length: TRUCK_FLEET }, (_, i) => {
+  const heading = rand(0, Math.PI * 2);      // any direction around the compass
+  const pitch = rand(-0.22, 0.22);           // a touch of climb/dive, so not all level
+  const g = makeSemiTruck(THREE, { scale: rand(0.2, 0.34), cabColor: pick(PALETTE) });
+
+  // Orient the rig and derive its world forward from the same rotation.
+  const e = new THREE.Euler(pitch, heading, 0, 'YXZ');
+  g.quaternion.setFromEuler(e);
+  const fwd = new THREE.Vector3(0, 0, -1).applyEuler(e);
+  const perp = new THREE.Vector3().crossVectors(fwd, _up).normalize(); // sideways spread
+
+  // Start half a range "behind" center along forward, nudged sideways + in height.
   const base = CENTER.clone()
     .addScaledVector(fwd, -RANGE / 2)
-    .addScaledVector(perp, d.side)
-    .setY(d.y);
+    .addScaledVector(perp, rand(-1.2, 1.2));
+  base.y += rand(-0.8, 1.0);
+
   scene.add(g);
-  return { g, fwd, base, speed: d.speed, s: (i / TRUCK_DEFS.length) * RANGE };
+  return { g, fwd, base, speed: rand(2.0, 4.2), s: (i / TRUCK_FLEET) * RANGE };
 });
 
 // ---- Resize handling -------------------------------------------------------

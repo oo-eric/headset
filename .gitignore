@@ -1,2 +1,6 @@
 .claude
 node_modules
+ios/build/
+ios/DerivedData/
+ios/**/xcuserdata/
+.DS_Store
