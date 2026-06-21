@@ -10,22 +10,6 @@
     html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
     #app { width: 100vw; height: 100vh; display: block; }
 
-    /* Start overlay — also the required user-gesture for iOS motion permission. */
-    #start {
-      position: fixed; inset: 0; z-index: 10;
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
-      gap: 18px; background: #0b0b10; color: #e8e8f0;
-      font-family: system-ui, -apple-system, sans-serif; text-align: center; padding: 24px;
-    }
-    #start h1 { font-size: 20px; font-weight: 600; margin: 0; }
-    #start p  { font-size: 14px; opacity: .7; max-width: 22em; margin: 0; line-height: 1.5; }
-    #enter {
-      margin-top: 8px; padding: 14px 28px; font-size: 17px; font-weight: 600;
-      color: #0b0b10; background: #8ad; border: 0; border-radius: 999px; cursor: pointer;
-    }
-    #enter:active { transform: scale(.97); }
-    #hint { font-size: 12px; opacity: .45; }
-
     /* Center alignment line — marks the seam between the two eye views, i.e. where
        the phone's centerline / your nose bridge should sit in the headset. */
     #centerline {
@@ -33,18 +17,22 @@
       width: 2px; margin-left: -1px; z-index: 5;
       background: rgba(255, 60, 60, 0.7); pointer-events: none;
     }
+
+    /* One-time prompt, removed on first tap. iOS requires a user gesture to grant
+       motion access, so a single tap is unavoidable — this just makes it discoverable.
+       pointer-events:none so it never intercepts the tap (unlike a real button). */
+    #hint {
+      position: fixed; left: 50%; bottom: 6%; transform: translateX(-50%); z-index: 10;
+      padding: 8px 14px; border-radius: 999px; pointer-events: none;
+      background: rgba(0, 0, 0, 0.55); color: #cde;
+      font: 13px system-ui, -apple-system, sans-serif; white-space: nowrap;
+    }
   </style>
 </head>
 <body>
   <canvas id="app"></canvas>
   <div id="centerline"></div>
-
-  <div id="start">
-    <h1>Stereo Hello World</h1>
-    <p>Tap to start, then drop your phone into the headset and look around by turning your head.</p>
-    <button id="enter">Enter VR</button>
-    <div id="hint">iOS will ask permission to use motion sensors — tap Allow.</div>
-  </div>
+  <div id="hint">tap to start head tracking</div>
 
   <script type="module" src="/main.js"></script>
 </body>

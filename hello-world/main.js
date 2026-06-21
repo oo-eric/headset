@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { StereoEffect } from 'three/examples/jsm/effects/StereoEffect.js';
 import { DeviceOrientationControls } from 'three/examples/jsm/controls/DeviceOrientationControls.js';
 
 // ---- Scene setup -----------------------------------------------------------
@@ -15,8 +14,40 @@ scene.fog = new THREE.Fog(0x101018, 1, 30);
 const camera = new THREE.PerspectiveCamera(70, 1, 0.1, 100);
 camera.position.set(0, 1.6, 0);
 
-// StereoEffect renders the scene twice (one per eye), side by side.
-const stereo = new StereoEffect(renderer);
+// ---- Stereo rendering with a lens-centering offset -------------------------
+// We render the scene twice (one camera per eye). A plain stereo renderer centers
+// each eye in its half of the screen — but on a wide phone that puts the two image
+// centers farther apart than your eyes can converge. `lensShift` slides each eye's
+// image horizontally toward the screen center (the classic Cardboard lens-distance
+// correction). 38px fuses cleanly for an iPhone 17 Pro in this headset.
+const stereoCam = new THREE.StereoCamera();
+stereoCam.aspect = 0.5; // each eye fills half the width
+const lensShift = 38;   // px toward center, per eye
+
+const _size = new THREE.Vector2();
+function renderStereo() {
+  scene.updateMatrixWorld();
+  if (camera.parent === null) camera.updateMatrixWorld();
+  stereoCam.update(camera);
+
+  renderer.getSize(_size);
+  const w = _size.x, h = _size.y, half = w / 2;
+
+  if (renderer.autoClear) renderer.clear();
+  renderer.setScissorTest(true); // per-eye clears/draws stay within each half
+
+  // Left eye: clipped to the left half, drawn shifted right toward center.
+  renderer.setScissor(0, 0, half, h);
+  renderer.setViewport(lensShift, 0, half, h);
+  renderer.render(scene, stereoCam.cameraL);
+
+  // Right eye: clipped to the right half, drawn shifted left toward center.
+  renderer.setScissor(half, 0, half, h);
+  renderer.setViewport(half - lensShift, 0, half, h);
+  renderer.render(scene, stereoCam.cameraR);
+
+  renderer.setScissorTest(false);
+}
 
 // ---- Lights ----------------------------------------------------------------
 scene.add(new THREE.HemisphereLight(0xffffff, 0x223344, 0.9));
@@ -54,94 +85,59 @@ function resize() {
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   renderer.setSize(w, h);
-  stereo.setSize(w, h);
 }
 window.addEventListener('resize', resize);
 resize();
 
-// ---- Render loop -----------------------------------------------------------
+// ---- Reticle ---------------------------------------------------------------
+// A small ring pinned to the center of view — the cursor for the eventual gaze +
+// clicker interaction (no targets yet; for now it's a dead-center reference).
+const reticle = new THREE.Mesh(
+  new THREE.RingGeometry(0.008, 0.016, 24),
+  new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9,
+                                depthTest: false, fog: false })
+);
+reticle.position.set(0, 0, -1);
+reticle.renderOrder = 999;
+camera.add(reticle);
+scene.add(camera); // camera must be in the scene graph for its children to render
+
+// ---- Head tracking ---------------------------------------------------------
 let controls = null;
+
+// Some Android devices only emit 'deviceorientationabsolute', which three's
+// DeviceOrientationControls doesn't bind. If the plain event never fires, feed the
+// absolute one into the controls. (On iOS the plain event fires, so this stays inert.)
+let relEvents = 0;
+window.addEventListener('deviceorientation', () => { relEvents++; });
+window.addEventListener('deviceorientationabsolute', (e) => {
+  if (controls && relEvents === 0) controls.deviceOrientation = e;
+});
+
+// ---- Start on first tap ----------------------------------------------------
+// iOS only grants motion-sensor access from a user gesture, so we can't fully
+// auto-start. The first tap anywhere (finger or headset clicker) requests permission
+// and begins head tracking — no button. Tap to start *before* inserting the phone.
+const hint = document.getElementById('hint');
+let started = false;
+async function start() {
+  if (started) return;
+  started = true;
+  const DOE = window.DeviceOrientationEvent;
+  if (DOE && typeof DOE.requestPermission === 'function') {
+    try { await DOE.requestPermission(); } catch (e) { /* denied → stays static */ }
+  }
+  controls = new DeviceOrientationControls(camera);
+  if (hint) hint.remove();
+  setTimeout(resize, 100); // iOS sometimes needs a nudge after layout settles
+}
+window.addEventListener('click', start);
+
+// ---- Render loop -----------------------------------------------------------
 function animate() {
   requestAnimationFrame(animate);
   for (const c of cubes) { c.rotation.x += 0.01; c.rotation.y += 0.013; }
   if (controls) controls.update();
-  stereo.render(scene, camera);
+  renderStereo();
 }
-animate();
-
-// ---- Debug HUD (temporary) -------------------------------------------------
-// A small overlay so we can see, out of the headset, whether motion events are
-// actually arriving. Remove once head tracking is confirmed working.
-const hud = document.createElement('div');
-hud.style.cssText =
-  'position:fixed;top:0;left:0;z-index:20;padding:6px 8px;font:12px/1.4 monospace;' +
-  'color:#0f0;background:rgba(0,0,0,.6);white-space:pre;pointer-events:none;max-width:100vw;';
-document.body.appendChild(hud);
-
-const dbg = {
-  ua: /iPhone|iPad|iPod/.test(navigator.userAgent) ? 'iOS'
-      : /Android/.test(navigator.userAgent) ? 'Android' : 'other',
-  needsPerm: typeof window.DeviceOrientationEvent?.requestPermission === 'function',
-  perm: '(not requested)',
-  rel: 0,   // 'deviceorientation' events
-  abs: 0,   // 'deviceorientationabsolute' events
-  last: null,
-};
-function drawHud() {
-  hud.textContent =
-    `platform: ${dbg.ua}  secure: ${window.isSecureContext}\n` +
-    `needs permission: ${dbg.needsPerm}\n` +
-    `permission: ${dbg.perm}\n` +
-    `deviceorientation:         ${dbg.rel}\n` +
-    `deviceorientationabsolute: ${dbg.abs}\n` +
-    (dbg.last
-      ? `a:${dbg.last.alpha?.toFixed(0)} b:${dbg.last.beta?.toFixed(0)} g:${dbg.last.gamma?.toFixed(0)}`
-      : 'a:- b:- g:-');
-}
-drawHud();
-
-// Listen to BOTH event types. Some Android devices only emit the "absolute" variant,
-// which three's DeviceOrientationControls doesn't bind. We count both, and if only the
-// absolute one fires, we feed it straight into the controls' internal state.
-window.addEventListener('deviceorientation', (e) => {
-  dbg.rel++;
-  dbg.last = { alpha: e.alpha, beta: e.beta, gamma: e.gamma };
-  drawHud();
-});
-window.addEventListener('deviceorientationabsolute', (e) => {
-  dbg.abs++;
-  // Only fall back to absolute if the plain event isn't delivering data.
-  if (controls && dbg.rel === 0) {
-    controls.deviceOrientation = e;
-    dbg.last = { alpha: e.alpha, beta: e.beta, gamma: e.gamma };
-  }
-  drawHud();
-});
-
-// ---- Entry flow: user gesture -> (iOS permission) -> motion control --------
-const startEl = document.getElementById('start');
-const enterBtn = document.getElementById('enter');
-
-async function enterVR() {
-  // iOS 13+ requires an explicit, gesture-triggered permission grant.
-  const DOE = window.DeviceOrientationEvent;
-  if (DOE && typeof DOE.requestPermission === 'function') {
-    try {
-      dbg.perm = 'requesting…'; drawHud();
-      const state = await DOE.requestPermission();
-      dbg.perm = state;
-    } catch (e) {
-      dbg.perm = 'error: ' + (e?.message || e);
-    }
-  } else {
-    dbg.perm = 'granted (no prompt needed)';
-  }
-  drawHud();
-
-  controls = new DeviceOrientationControls(camera);
-  startEl.style.display = 'none';
-  // iOS sometimes needs a nudge after layout settles.
-  setTimeout(resize, 100);
-}
-
-enterBtn.addEventListener('click', enterVR);
+requestAnimationFrame(animate);
