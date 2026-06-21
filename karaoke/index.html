@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <!-- Lock the viewport: no zoom/scroll, cover the notch area on iOS. -->
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <title>Karaoke — Heads-Up Lyrics</title>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+    #app { width: 100vw; height: 100vh; display: block; }
+
+    /* Center alignment line — the seam between the two eye views (nose-bridge line). */
+    #centerline {
+      position: fixed; top: 0; bottom: 0; left: 50%;
+      width: 2px; margin-left: -1px; z-index: 5;
+      background: rgba(255, 60, 60, 0.7); pointer-events: none;
+    }
+
+    /* One-time prompt, removed on first tap. iOS needs a user gesture for BOTH motion
+       access AND audio playback — the first tap grants both. pointer-events:none so it
+       never swallows the tap (clicker or finger). */
+    #hint {
+      position: fixed; left: 50%; bottom: 6%; transform: translateX(-50%); z-index: 10;
+      padding: 8px 14px; border-radius: 999px; pointer-events: none;
+      background: rgba(0, 0, 0, 0.55); color: #cde;
+      font: 13px system-ui, -apple-system, sans-serif; white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="app"></canvas>
+  <div id="centerline"></div>
+  <div id="hint">tap to start</div>
+
+  <!-- Backing track (no-vocals instrumental). Drop your file in as karaoke/track.mp3.
+       preload=auto so it's ready the instant the entry tap fires. Lyric sync reads
+       this element's currentTime, so this is the single clock for the whole experience. -->
+  <audio id="track" src="/karaoke/track.mp3" preload="auto" playsinline></audio>
+
+  <script type="module" src="/karaoke/main.js"></script>
+</body>
+</html>

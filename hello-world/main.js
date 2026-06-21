@@ -231,21 +231,62 @@ window.addEventListener('deviceorientationabsolute', (e) => {
 });
 
 // ---- Start -----------------------------------------------------------------
-// Mobile: iOS only grants motion access from a user gesture, so the first tap
-// anywhere (finger or headset clicker) requests permission and starts head
-// tracking — no button. Desktop: no permission or gesture needed, so mouse-look
-// starts immediately.
+// Mobile: iOS Safari only grants motion access from a user gesture, so we wait for
+// the first tap. Inside the iOS wrapper app the host grants motion natively (no
+// gesture needed), so it loads the page with ?autostart=1 to skip the tap and drop
+// straight into head tracking. Desktop: no permission/gesture needed, starts at once.
+const params = new URLSearchParams(location.search);
+const autoStart = params.has('autostart') || params.has('vr');
+// Native bridge: the iOS wrapper app loads with ?native=1 because WKWebView never
+// delivers `deviceorientation` events. Instead the app pushes the gyro attitude
+// quaternion in via window.__nativeOrientation and we drive the camera from it.
+const useNative = params.has('native');
 const hint = document.getElementById('hint');
 let started = false;
+
+// -90° about X — point the camera "out the back" of the phone (same correction
+// three's DeviceOrientationControls applies internally).
+const _backCam = new THREE.Quaternion(-Math.SQRT1_2, 0, 0, Math.SQRT1_2);
+const _zAxis = new THREE.Vector3(0, 0, 1);
+const _natQ = new THREE.Quaternion();
+const _screenQ = new THREE.Quaternion();
+let nativeCalls = 0;
+let lastNat = '(none)';
+window.__nativeOrientation = (w, x, y, z) => {
+  nativeCalls++;
+  lastNat = `${w.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)} ${z.toFixed(2)}`;
+  _natQ.set(x, y, z, w);
+  camera.quaternion.copy(_natQ).multiply(_backCam);
+  // Compensate for the (landscape) screen orientation so "up" stays up.
+  const orient = (window.orientation || 0) * Math.PI / 180;
+  if (orient) camera.quaternion.multiply(_screenQ.setFromAxisAngle(_zAxis, -orient));
+};
+
+async function requestMotionPermission() {
+  const DOE = window.DeviceOrientationEvent;
+  if (DOE && typeof DOE.requestPermission === 'function') {
+    // Race a timeout: in some WKWebView setups the permission promise never settles,
+    // which would otherwise hang head-tracking startup forever. After the timeout we
+    // just proceed — the wrapper app has already granted motion access natively.
+    try {
+      await Promise.race([
+        DOE.requestPermission(),
+        new Promise((resolve) => setTimeout(resolve, 800)),
+      ]);
+    } catch (e) { /* denied → stays static */ }
+  }
+}
+
 async function start() {
   if (started) return;
   started = true;
   if (isMobile) {
-    const DOE = window.DeviceOrientationEvent;
-    if (DOE && typeof DOE.requestPermission === 'function') {
-      try { await DOE.requestPermission(); } catch (e) { /* denied → stays static */ }
+    if (useNative) {
+      // Camera is driven by window.__nativeOrientation from the host app.
+    } else {
+      await requestMotionPermission();
+      controls = new DeviceOrientationControls(camera);
     }
-    controls = new DeviceOrientationControls(camera);
     if (hint) hint.remove();
   } else {
     enableMouseLook(); // hint is removed on first drag
@@ -254,11 +295,37 @@ async function start() {
 }
 
 if (isMobile) {
-  if (hint) hint.textContent = 'tap to start head tracking';
-  window.addEventListener('click', start);
+  if (hint) hint.textContent = autoStart ? 'starting head tracking…' : 'tap to start head tracking';
+  window.addEventListener('click', start); // fallback, and Safari's required gesture
+  if (autoStart) start();                   // wrapper app: go straight in
 } else {
   if (hint) hint.textContent = 'drag to look around';
   start(); // no gesture needed on desktop
+}
+
+// ---- Temporary on-screen debug HUD (shows with ?native or ?debug) ----------
+// Lets us see, inside the headset/app where there's no console, what's actually
+// firing: taps reaching the page, native gyro calls, DeviceOrientation events, and
+// the live camera quaternion. Remove once head tracking is confirmed.
+if (useNative || params.has('debug')) {
+  const hud = document.createElement('div');
+  hud.style.cssText =
+    'position:fixed;top:0;left:0;z-index:50;margin:4px;padding:6px 8px;' +
+    'font:11px/1.4 monospace;color:#0f0;background:rgba(0,0,0,.65);' +
+    'white-space:pre;pointer-events:none;border-radius:6px;';
+  document.body.appendChild(hud);
+  let taps = 0;
+  window.addEventListener('click', () => { taps++; }, true);
+  const f = (n) => n.toFixed(2);
+  setInterval(() => {
+    const q = camera.quaternion;
+    hud.textContent =
+      `mobile:${isMobile} native:${useNative} auto:${autoStart} started:${started}\n` +
+      `taps:${taps}  nativeCalls:${nativeCalls}  DOevents:${relEvents}\n` +
+      `camQ: ${f(q.x)} ${f(q.y)} ${f(q.z)} ${f(q.w)}\n` +
+      `lastNat(wxyz): ${lastNat}\n` +
+      `window.orientation: ${window.orientation}`;
+  }, 200);
 }
 
 // ---- Render loop -----------------------------------------------------------

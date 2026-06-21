@@ -44,9 +44,12 @@ final class ServerClient: ObservableObject {
     }
 
     /// Resolve a project's path (e.g. "/hello-world/") against the current host.
+    /// Appends ?autostart=1&native=1: skip the tap-to-start gate, and drive the camera
+    /// from the native CoreMotion bridge (WKWebView won't deliver deviceorientation).
     func url(for project: Project, host: String) -> URL? {
         guard let base = baseURL(host: host) else { return nil }
-        return URL(string: project.path, relativeTo: base)
+        let sep = project.path.contains("?") ? "&" : "?"
+        return URL(string: project.path + sep + "autostart=1&native=1", relativeTo: base)
     }
 
     func load(host: String) async {

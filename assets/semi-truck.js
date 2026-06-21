@@ -80,7 +80,7 @@ export function makeSemiTruck(THREE, {
   // a couple of exhaust stacks, and a grille.
   box(2.0, 0.25, 4.5, 0, WHEEL_R + 0.05, -3.3, chassisMat); // tractor frame
   box(2.3, 1.0, 2.2, 0, WHEEL_R + 0.55, -5.0, cabMat);      // hood / engine
-  box(2.5, 2.0, 2.2, 0, WHEEL_R + 1.2, -2.9, cabMat);       // cab
+  box(2.4, 2.0, 2.2, 0, WHEEL_R + 1.2, -2.9, cabMat);       // cab (slightly < trailer width so the overlap doesn't z-fight)
   box(2.3, 0.9, 0.12, 0, WHEEL_R + 1.7, -3.95, glassMat);   // windshield
   box(2.35, 0.7, 0.15, 0, WHEEL_R + 0.55, -6.05, chromeMat);// front grille
 

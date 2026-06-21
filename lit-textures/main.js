@@ -31,9 +31,23 @@ renderer.physicallyCorrectLights = true;        // real falloff for light decay/
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;
 
+// Shadows. The map is rendered from the light's POV once per frame (not per eye),
+// then sampled in each eye's shader. PCFSoft = softer edges. Cheap-ish for one
+// directional light; the cost is re-rendering all casters every frame since the
+// trucks move. Note: with no ground plane there's nothing to catch most shadows,
+// so these mostly show up as trucks/spheres shading EACH OTHER as the light orbits.
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0c0e12);
-scene.fog = new THREE.Fog(0x0c0e12, 6, 40);
+// Background matches the fog color so distant objects dissolve into it seamlessly
+// (no visible edge). FogExp2 is exponential — a smoother, more atmospheric falloff
+// than linear Fog. Density is tuned to the scene's scale: spheres (~2–9 units out)
+// get a depth-giving haze, and the trucks (which loop out to ~17 units) fade right
+// into the murk and re-emerge. Bump density up for thicker fog, down for clearer.
+const FOG_COLOR = 0x0c0e12;
+scene.background = new THREE.Color(FOG_COLOR);
+scene.fog = new THREE.FogExp2(FOG_COLOR, 0.075);
 
 const camera = new THREE.PerspectiveCamera(70, 1, 0.1, 100);
 camera.position.set(0, 1.6, 0); // ~eye height; DeviceOrientationControls rotates it
@@ -52,7 +66,48 @@ scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture
 // in stereo on a phone GPU; the baked IBL ambient does the heavy lifting instead.
 const key = new THREE.DirectionalLight(0xffffff, 2.0);
 key.position.set(4, 8, 2);
+key.castShadow = true;
+// The light orbits, so the shadow camera (an ortho box aimed at the origin)
+// must be big enough to cover the whole sphere cloud from any angle.
+key.shadow.mapSize.set(1024, 1024);                 // bump to 2048 for crisper edges
+key.shadow.camera.near = 0.5;
+key.shadow.camera.far = 40;
+key.shadow.camera.left = key.shadow.camera.bottom = -16;
+key.shadow.camera.right = key.shadow.camera.top = 16;
+key.shadow.normalBias = 0.02;                        // kills acne on the curved spheres
 scene.add(key);
+
+// ---- Enclosing globe — you're inside it ------------------------------------
+// A big inverted sphere (BackSide renders the inner faces). Unlit + fog:false so
+// its lat/long grid stays visible all the way out at radius 40; its base color is
+// FOG_COLOR, so the haze on distant spheres/trucks dissolves seamlessly into the
+// shell. Net effect: hazy midground objects, a crisp gridded globe far behind.
+const globeTex = (() => {
+  const c = document.createElement('canvas');
+  c.width = 1024; c.height = 512;                     // 2:1 → equirectangular wrap
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#0c0e12'; ctx.fillRect(0, 0, c.width, c.height); // == FOG_COLOR
+  ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(120,150,200,0.30)';
+  for (let i = 1; i < 12; i++) {                      // latitudes (horizontal lines)
+    const y = (i / 12) * c.height;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(c.width, y); ctx.stroke();
+  }
+  for (let i = 0; i < 24; i++) {                      // longitudes (vertical lines)
+    const x = (i / 24) * c.width;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, c.height); ctx.stroke();
+  }
+  ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(150,185,235,0.55)';    // brighter equator
+  ctx.beginPath(); ctx.moveTo(0, c.height / 2); ctx.lineTo(c.width, c.height / 2); ctx.stroke();
+  const t = new THREE.CanvasTexture(c);
+  t.encoding = THREE.sRGBEncoding;
+  return t;
+})();
+const globe = new THREE.Mesh(
+  new THREE.SphereGeometry(40, 64, 48),
+  new THREE.MeshBasicMaterial({ map: globeTex, side: THREE.BackSide, fog: false })
+);
+globe.position.set(0, 1.6, 0);                        // centered on the viewer's eye
+scene.add(globe);
 
 // ---- Stereo rendering with a lens-centering offset -------------------------
 // Identical to hello-world: render twice, slide each eye toward screen center by
@@ -166,6 +221,8 @@ for (let i = 0; i < SPHERE_COUNT; i++) {
   }
 
   const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial(matOpts));
+  mesh.castShadow = true;
+  mesh.receiveShadow = true; // so spheres catch the trucks' (and each other's) shadows
 
   // Spherical placement around the viewer (eye at y≈1.6): full azimuth, a wide
   // band of elevation, varied distance. cos(elev) keeps the radius honest.
@@ -195,6 +252,8 @@ const trucks = Array.from({ length: TRUCK_FLEET }, (_, i) => {
   const heading = rand(0, Math.PI * 2);      // any direction around the compass
   const pitch = rand(-0.22, 0.22);           // a touch of climb/dive, so not all level
   const g = makeSemiTruck(THREE, { scale: rand(0.2, 0.34), cabColor: pick(PALETTE) });
+  // The truck is a Group of boxes/cylinders — flag each mesh to cast (and receive).
+  g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
 
   // Orient the rig and derive its world forward from the same rotation.
   const e = new THREE.Euler(pitch, heading, 0, 'YXZ');

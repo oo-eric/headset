@@ -12,6 +12,7 @@ struct WebVRView: UIViewControllerRepresentable {
 final class WebVRController: UIViewController, WKNavigationDelegate, WKUIDelegate {
     private let url: URL
     private var webView: WKWebView!
+    private var motionBridge: MotionBridge?
 
     init(url: URL) {
         self.url = url
@@ -47,6 +48,10 @@ final class WebVRController: UIViewController, WKNavigationDelegate, WKUIDelegat
     override func viewDidLoad() {
         super.viewDidLoad()
         webView.load(URLRequest(url: url))
+        // Push gyro orientation into the page. Updates begin immediately; the page
+        // ignores them until window.__nativeOrientation is defined on load.
+        motionBridge = MotionBridge(webView: webView)
+        motionBridge?.start()
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -57,6 +62,7 @@ final class WebVRController: UIViewController, WKNavigationDelegate, WKUIDelegat
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         UIApplication.shared.isIdleTimerDisabled = false
+        motionBridge?.stop()
     }
 
     // MARK: - Motion bridge

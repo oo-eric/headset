@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Lists the experiments the dev server is serving and opens the chosen one fullscreen.
 struct LauncherView: View {
-    @AppStorage("serverHost") private var host = "192.168.1.89:8443"
+    @AppStorage("serverHost") private var host = "https://rides-restrict-ranging-holiday.trycloudflare.com"
     @StateObject private var client = ServerClient()
     @State private var draftHost = ""
 
