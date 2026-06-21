@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <!-- Same viewport lock as the experiments: no zoom, cover the notch. This page is
+       viewed on the phone (before it goes in the headset), so it's a normal 2D portrait
+       UI with big tap targets — not a stereo render. -->
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <title>Headset</title>
+  <style>
+    :root {
+      --bg: #000;
+      --card: #111418;
+      --card-press: #1a1f25;
+      --text: #e7eef5;
+      --muted: #8b97a3;
+      --accent: rgba(255, 60, 60, 0.9); /* the centerline red, reused as the brand accent */
+    }
+
+    html, body {
+      margin: 0; min-height: 100%;
+      background: var(--bg); color: var(--text);
+      font: 16px/1.4 system-ui, -apple-system, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    /* Respect the safe-area insets so content clears the notch / home indicator. */
+    body {
+      box-sizing: border-box;
+      padding: max(env(safe-area-inset-top), 24px)
+               max(env(safe-area-inset-right), 20px)
+               max(env(safe-area-inset-bottom), 24px)
+               max(env(safe-area-inset-left), 20px);
+      max-width: 640px; margin: 0 auto;
+    }
+
+    header { margin: 8px 4px 24px; }
+    header h1 {
+      margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.02em;
+    }
+    header h1 .mark { color: var(--accent); }
+    header p { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
+
+    #list { display: flex; flex-direction: column; gap: 12px; }
+
+    /* Each experience is a full-width tappable card (an <a>, so it works without JS too). */
+    .card {
+      display: block; text-decoration: none; color: inherit;
+      background: var(--card); border-radius: 16px; padding: 18px 20px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      -webkit-tap-highlight-color: transparent;
+      transition: background 0.12s ease, transform 0.06s ease;
+    }
+    .card:active { background: var(--card-press); transform: scale(0.985); }
+    .card .title { font-size: 18px; font-weight: 600; }
+    .card .desc { margin-top: 4px; color: var(--muted); font-size: 14px; }
+    .card .arrow { float: right; color: var(--muted); font-size: 18px; line-height: 1; }
+
+    /* Shown when the list is empty or fails to load. */
+    .empty { color: var(--muted); text-align: center; padding: 40px 0; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1><span class="mark">/</span>HEADSET</h1>
+    <p>Tap an experiment, then drop the phone in the headset.</p>
+  </header>
+
+  <main id="list" aria-label="Experiences">
+    <div class="empty">Loading…</div>
+  </main>
+
+  <script type="module" src="/main.js"></script>
+</body>
+</html>
