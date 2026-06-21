@@ -262,9 +262,12 @@ if (isMobile) {
 }
 
 // ---- Render loop -----------------------------------------------------------
+const clock = new THREE.Clock();
 function animate() {
   requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.1); // clamp so a tab-stall doesn't teleport trucks
   for (const c of cubes) { c.rotation.x += 0.01; c.rotation.y += 0.013; }
+  updateTrucks(dt);
   if (controls) controls.update();
   renderStereo();
 }

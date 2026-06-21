@@ -12,9 +12,11 @@ permission → motion). The eye-distance offset (`lensShift`) is fixed at 38px f
 
 ## Run it
 
+Tooling is shared at the repo root, so run from there and name this experiment:
+
 ```bash
-yarn install   # first time only
-yarn dev
+yarn install         # first time only, at the repo root
+yarn dev hello-world # serves this directory
 ```
 
 Vite serves over **HTTPS** (required — iOS silently blocks motion sensors on plain `http://`)
@@ -33,7 +35,7 @@ first time — accept it ("Advanced → proceed"). Edits to `main.js` / `index.h
 1. Open the URL in the phone browser (Safari on iOS, Chrome on Android).
 2. **Tap the screen once** to start. On iOS, tap **Allow** when asked for motion access.
    (There's no Enter button — iOS just needs that one gesture before it hands over the
-   sensors. Do this *before* inserting the phone.)
+   sensors. Do this _before_ inserting the phone.)
 3. Turn the phone to landscape and drop it into the headset.
 4. Turn your head to look around the ring of cubes.
 

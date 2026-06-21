@@ -18,14 +18,18 @@ sources: `references/phone-vr-platform-notes.md`.
 
 ## Stack
 
-- **Yarn** for package management, **Vite** as the dev server / bundler. Each experiment is
-  its own Vite project (own `package.json`). `yarn dev` to run.
+- **Yarn** for package management, **Vite** as the dev server / bundler. **One shared setup at
+  the repo root**: a single `package.json`, `node_modules`, `vite.config.js`, and `yarn.lock`
+  cover every experiment (all deps are pinned identically anyway). Each experiment is just
+  source (`index.html` + `main.js`) in its own directory. Run one by pointing Vite at its
+  folder: **`yarn dev <experiment-dir>`** (e.g. `yarn dev hello-world`) — the dir becomes the
+  Vite root. `yarn build <dir>` / `yarn preview <dir>` likewise.
 - **Three.js `0.132.2`**, imported as an ES module (`import * as THREE from 'three'`).
 - **`StereoEffect`** (`three/examples/jsm/effects/StereoEffect.js`) — splits the canvas into
   two side-by-side eye views.
 - **`DeviceOrientationControls`** (`three/examples/jsm/controls/DeviceOrientationControls.js`)
   — turns phone motion into camera rotation.
-- Version 0.132.2 is pinned deliberately: it's the last version that ships *both* of those in
+- Version 0.132.2 is pinned deliberately: it's the last version that ships _both_ of those in
   `examples/jsm/`. Newer versions removed `DeviceOrientationControls`. Don't bump Three.js
   without re-checking that both modules still exist.
 - **HTTPS in dev** comes from `@vitejs/plugin-basic-ssl` (auto self-signed cert) + `host: true`
@@ -35,8 +39,8 @@ sources: `references/phone-vr-platform-notes.md`.
 
 The headset has a **clicker**: a lever that taps the phone screen at a fixed point. Treat it
 as a single button — a **tap anywhere** is the clicker (the tap location is arbitrary, so
-never rely on *where* it lands). Note: the clicker on this unit has been unreliable, so don't
-make it the *only* path to something critical.
+never rely on _where_ it lands). Note: the clicker on this unit has been unreliable, so don't
+make it the _only_ path to something critical.
 
 There is **no start screen / button**. The first tap anywhere starts head tracking (iOS needs
 that one gesture to grant motion access — see below). UI overlays must be `pointer-events:
@@ -70,14 +74,20 @@ removed once 38 was settled — recoverable from chat history if needed again.)
 
 ## Structure
 
+- Root: shared `package.json` / `node_modules` / `vite.config.js` / `yarn.lock` (see Stack).
 - `references/` — platform research, technical notes, sources.
 - `hello-world/` — minimal stereo "hello world": split-screen scene, look around by turning
   your head. The reference for the edit→refresh→headset loop and the iOS entry flow.
+- `lit-textures/` — PBR + image-based-lighting reference: a roughness×metalness sphere chart
+  with semi trucks flying through it (no ground plane), lit by `RoomEnvironment` (no asset
+  files). The reference for r132 color management (`encoding`/`sRGBEncoding`) and IBL.
 
-Each experiment lives in its own top-level directory, self-contained.
+Each experiment is a top-level directory holding just its source (`index.html` + `main.js`);
+shared tooling lives at the root.
 
 ## Running / testing on the phone
 
-From an experiment directory: `yarn install` then `yarn dev`. Vite prints a `Network:`
-HTTPS URL (e.g. `https://<lan-ip>:8443/`) — open that on the phone, accept the self-signed
-cert warning once, tap "Enter VR," drop the phone in the headset. See `hello-world/README.md`.
+`yarn install` **once at the repo root**, then `yarn dev <experiment-dir>` (e.g.
+`yarn dev hello-world`). Vite prints a `Network:` HTTPS URL (e.g. `https://<lan-ip>:8443/`) —
+open that on the phone, accept the self-signed cert warning once, tap "Enter VR," drop the
+phone in the headset. See `hello-world/README.md`.

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { DeviceOrientationControls } from 'three/examples/jsm/controls/DeviceOrientationControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { makeSemiTruck } from '../assets/semi-truck.js';
 
 // =============================================================================
 // Lit Textures — a PBR + image-based-lighting reference scene.
@@ -82,62 +83,6 @@ function renderStereo() {
   renderer.setScissorTest(false);
 }
 
-// ---- Procedural floor textures (color map + data map) ----------------------
-// Two CanvasTextures, no asset files. This is the texture-pipeline demo:
-//   - colorTex is COLOR  -> tag it sRGBEncoding.
-//   - roughTex is DATA   -> leave it LinearEncoding (the default). Tagging a data
-//     map sRGB is the classic "why is my surface subtly wrong" bug.
-function makeCanvas(size, draw) {
-  const c = document.createElement('canvas');
-  c.width = c.height = size;
-  draw(c.getContext('2d'), size);
-  return c;
-}
-
-// Checkerboard albedo (color).
-const colorCanvas = makeCanvas(256, (ctx, s) => {
-  const n = 8, cell = s / n;
-  for (let y = 0; y < n; y++) {
-    for (let x = 0; x < n; x++) {
-      ctx.fillStyle = (x + y) % 2 ? '#3a4452' : '#2a323d';
-      ctx.fillRect(x * cell, y * cell, cell, cell);
-    }
-  }
-});
-const colorTex = new THREE.CanvasTexture(colorCanvas);
-colorTex.encoding = THREE.sRGBEncoding;                 // <-- color map
-colorTex.wrapS = colorTex.wrapT = THREE.RepeatWrapping;
-colorTex.repeat.set(24, 24);
-colorTex.anisotropy = renderer.capabilities.getMaxAnisotropy(); // cheap sharpness across the floor
-
-// Smooth grayscale noise as a roughness map (data) — makes the floor read as
-// patchy matte/semi-gloss instead of uniform plastic.
-const roughCanvas = makeCanvas(256, (ctx, s) => {
-  const img = ctx.createImageData(s, s);
-  for (let i = 0; i < s * s; i++) {
-    // low-frequency-ish value noise, biased toward "rough"
-    const v = 150 + Math.floor(80 * Math.abs(Math.sin(i * 12.9898) * 43758.5453 % 1));
-    img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = v;
-    img.data[i * 4 + 3] = 255;
-  }
-  ctx.putImageData(img, 0, 0);
-});
-const roughTex = new THREE.CanvasTexture(roughCanvas);  // <-- DATA map: no .encoding set
-roughTex.wrapS = roughTex.wrapT = THREE.RepeatWrapping;
-roughTex.repeat.set(24, 24);
-
-const floor = new THREE.Mesh(
-  new THREE.PlaneGeometry(60, 60),
-  new THREE.MeshStandardMaterial({
-    map: colorTex,
-    roughnessMap: roughTex,
-    roughness: 1.0,   // multiplied by roughnessMap
-    metalness: 0.0,
-  })
-);
-floor.rotation.x = -Math.PI / 2;
-scene.add(floor);
-
 // ---- The roughness x metalness sphere chart --------------------------------
 // A grid you can study by turning your head. Left->right: roughness 0..1.
 // Bottom->top: metalness 0..1. All the same base color, all lit only by the IBL
@@ -181,6 +126,33 @@ for (let i = 0; i < 2; i++) {
   scene.add(m);
   accents.push(m);
 }
+
+// ---- Trucks driving through, each on a different heading -------------------
+// There's deliberately no ground plane, so the trucks fly at eye height and
+// pass straight THROUGH the sphere chart (no collision — intersection is the
+// point). Forward is -Z in the truck's local space, so rotating .y aims it; the
+// rig then slides along its own forward each frame and loops over RANGE.
+const CENTER = new THREE.Vector3(0, 0, -2.5); // the volume they cross through
+const RANGE = 28;                             // travel length before looping
+const TRUCK_DEFS = [
+  { heading: 0.0,             speed: 3.2, y: 1.60, side: 0.0,  cabColor: 0xcc2222 }, // drives away down -Z
+  { heading: Math.PI * 0.5,  speed: 2.6, y: 1.75, side: 0.5,  cabColor: 0x2e7d32 }, // crosses toward -X
+  { heading: -Math.PI * 0.5, speed: 2.9, y: 1.45, side: -0.6, cabColor: 0xf2a900 }, // crosses toward +X
+];
+const trucks = TRUCK_DEFS.map((d, i) => {
+  const g = makeSemiTruck(THREE, { scale: 0.26, cabColor: d.cabColor });
+  g.rotation.y = d.heading;
+  // Local -Z under a Y-rotation maps to this world forward; perp is 90° off it.
+  const fwd = new THREE.Vector3(-Math.sin(d.heading), 0, -Math.cos(d.heading));
+  const perp = new THREE.Vector3(-Math.cos(d.heading), 0, Math.sin(d.heading));
+  // Start half a range "behind" center along forward, nudged sideways, at eye height.
+  const base = CENTER.clone()
+    .addScaledVector(fwd, -RANGE / 2)
+    .addScaledVector(perp, d.side)
+    .setY(d.y);
+  scene.add(g);
+  return { g, fwd, base, speed: d.speed, s: (i / TRUCK_DEFS.length) * RANGE };
+});
 
 // ---- Resize handling -------------------------------------------------------
 function resize() {
@@ -275,11 +247,21 @@ if (isMobile) {
 // ---- Render loop -----------------------------------------------------------
 // Orbit the key light slowly so highlights crawl across the metals — the easiest
 // way to read what roughness/metalness are doing is to watch a moving highlight.
+const clock = new THREE.Clock();
 let t = 0;
 function animate() {
   requestAnimationFrame(animate);
-  t += 0.005;
+  const dt = Math.min(clock.getDelta(), 0.05); // clamp so a hitch can't teleport trucks
+  t += dt * 0.3;
   key.position.set(Math.cos(t) * 6, 8, Math.sin(t) * 6);
+
+  // Slide each truck along its heading, looping back over RANGE.
+  for (const tr of trucks) {
+    tr.s += tr.speed * dt;
+    if (tr.s > RANGE) tr.s -= RANGE;
+    tr.g.position.copy(tr.base).addScaledVector(tr.fwd, tr.s);
+  }
+
   if (controls) controls.update();
   renderStereo();
 }
