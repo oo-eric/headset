@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <!-- Lock the viewport: no zoom/scroll, cover the notch area on iOS. -->
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <title>Stereo Hello World</title>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+    #app { width: 100vw; height: 100vh; display: block; }
+
+    /* Start overlay — also the required user-gesture for iOS motion permission. */
+    #start {
+      position: fixed; inset: 0; z-index: 10;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 18px; background: #0b0b10; color: #e8e8f0;
+      font-family: system-ui, -apple-system, sans-serif; text-align: center; padding: 24px;
+    }
+    #start h1 { font-size: 20px; font-weight: 600; margin: 0; }
+    #start p  { font-size: 14px; opacity: .7; max-width: 22em; margin: 0; line-height: 1.5; }
+    #enter {
+      margin-top: 8px; padding: 14px 28px; font-size: 17px; font-weight: 600;
+      color: #0b0b10; background: #8ad; border: 0; border-radius: 999px; cursor: pointer;
+    }
+    #enter:active { transform: scale(.97); }
+    #hint { font-size: 12px; opacity: .45; }
+  </style>
+</head>
+<body>
+  <canvas id="app"></canvas>
+
+  <div id="start">
+    <h1>Stereo Hello World</h1>
+    <p>Tap to start, then drop your phone into the headset and look around by turning your head.</p>
+    <button id="enter">Enter VR</button>
+    <div id="hint">iOS will ask permission to use motion sensors — tap Allow.</div>
+  </div>
+
+  <!-- Three.js r132 core + the two example scripts we depend on, as plain globals. -->
+  <script src="https://unpkg.com/three@0.132.2/build/three.min.js"></script>
+  <script src="https://unpkg.com/three@0.132.2/examples/js/effects/StereoEffect.js"></script>
+  <script src="https://unpkg.com/three@0.132.2/examples/js/controls/DeviceOrientationControls.js"></script>
+
+  <script>
+    // ---- Scene setup ---------------------------------------------------------
+    const canvas = document.getElementById('app');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio || 1);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x101018);
+    scene.fog = new THREE.Fog(0x101018, 1, 30);
+
+    // Camera sits at ~eye height. DeviceOrientationControls will rotate it.
+    const camera = new THREE.PerspectiveCamera(70, 1, 0.1, 100);
+    camera.position.set(0, 1.6, 0);
+
+    // StereoEffect renders the scene twice (one per eye), side by side.
+    const stereo = new THREE.StereoEffect(renderer);
+
+    // ---- Lights --------------------------------------------------------------
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x223344, 0.9));
+    const key = new THREE.DirectionalLight(0xffffff, 0.6);
+    key.position.set(3, 10, 4);
+    scene.add(key);
+
+    // ---- A floor so you have a sense of "down" and scale ---------------------
+    const floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(60, 60, 60, 60),
+      new THREE.MeshBasicMaterial({ color: 0x223040, wireframe: true })
+    );
+    floor.rotation.x = -Math.PI / 2;
+    scene.add(floor);
+
+    // ---- A ring of floating cubes to look around at -------------------------
+    const cubes = [];
+    const cubeGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+    const COUNT = 8, RADIUS = 5;
+    for (let i = 0; i < COUNT; i++) {
+      const angle = (i / COUNT) * Math.PI * 2;
+      const mat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color().setHSL(i / COUNT, 0.6, 0.55),
+        roughness: 0.4, metalness: 0.1,
+      });
+      const cube = new THREE.Mesh(cubeGeo, mat);
+      cube.position.set(Math.cos(angle) * RADIUS, 1.6, Math.sin(angle) * RADIUS);
+      scene.add(cube);
+      cubes.push(cube);
+    }
+
+    // ---- Resize handling -----------------------------------------------------
+    function resize() {
+      const w = window.innerWidth, h = window.innerHeight;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+      stereo.setSize(w, h);
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // ---- Render loop ---------------------------------------------------------
+    let controls = null;
+    function animate() {
+      requestAnimationFrame(animate);
+      for (const c of cubes) { c.rotation.x += 0.01; c.rotation.y += 0.013; }
+      if (controls) controls.update();
+      stereo.render(scene, camera);
+    }
+    animate();
+
+    // ---- Entry flow: user gesture -> (iOS permission) -> motion control ------
+    const startEl = document.getElementById('start');
+    const enterBtn = document.getElementById('enter');
+
+    async function enterVR() {
+      // iOS 13+ requires an explicit, gesture-triggered permission grant.
+      const DOE = window.DeviceOrientationEvent;
+      if (DOE && typeof DOE.requestPermission === 'function') {
+        try {
+          const state = await DOE.requestPermission();
+          if (state !== 'granted') {
+            alert('Motion access denied — head tracking will not work.');
+          }
+        } catch (e) {
+          alert('Could not request motion access. Are you on HTTPS?');
+        }
+      }
+      controls = new THREE.DeviceOrientationControls(camera);
+      startEl.style.display = 'none';
+      // iOS sometimes needs a nudge after layout settles.
+      setTimeout(resize, 100);
+    }
+
+    enterBtn.addEventListener('click', enterVR);
+  </script>
+</body>
+</html>
