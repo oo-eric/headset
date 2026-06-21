@@ -2,32 +2,29 @@
 
 A minimal split-screen (stereoscopic) 3D scene for a slide-in phone headset. A wireframe
 floor and a ring of spinning cubes; look around by turning your head with the phone in the
-headset. No build step — just an `index.html` loading Three.js from a CDN.
+headset. Vite dev server, Three.js as an ES module.
 
 This is the reference implementation for the two things that make phone VR work:
 **stereo rendering** (`StereoEffect`) and **head tracking** (`DeviceOrientationControls`),
 plus the **iOS entry flow** (tap → permission → motion).
 
-## Run it on your phone
-
-The phone needs to load this over **HTTPS** — iOS silently blocks motion sensors on plain
-`http://`. Two easy options:
-
-### Option A — HTTPS tunnel (simplest, works through any network)
-Serve the folder locally over plain HTTP, then expose it via an HTTPS tunnel:
+## Run it
 
 ```bash
-# from this directory
-python3 -m http.server 8000
-# in another terminal, point an HTTPS tunnel at port 8000, e.g.:
-#   ngrok http 8000        (or cloudflared, localtunnel, etc.)
+yarn install   # first time only
+yarn dev
 ```
-Open the tunnel's `https://…` URL in the phone browser.
 
-### Option B — Local HTTPS server on the LAN
-Generate a self-signed cert and serve over HTTPS on your machine's LAN IP, then open
-`https://<your-lan-ip>:8443` on the phone (you'll have to accept the cert warning once).
-Any small HTTPS static server works for this.
+Vite serves over **HTTPS** (required — iOS silently blocks motion sensors on plain `http://`)
+and binds to the LAN, printing two URLs:
+
+```
+➜  Local:   https://localhost:8443/      # this machine, for a quick desktop sanity check
+➜  Network: https://192.168.1.29:8443/   # open THIS one on the phone
+```
+
+The HTTPS cert is self-signed (via `@vitejs/plugin-basic-ssl`), so the browser will warn the
+first time — accept it ("Advanced → proceed"). Edits to `main.js` / `index.html` hot-reload.
 
 ## Using it
 

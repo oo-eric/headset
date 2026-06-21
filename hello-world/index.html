@@ -25,10 +25,19 @@
     }
     #enter:active { transform: scale(.97); }
     #hint { font-size: 12px; opacity: .45; }
+
+    /* Center alignment line — marks the seam between the two eye views, i.e. where
+       the phone's centerline / your nose bridge should sit in the headset. */
+    #centerline {
+      position: fixed; top: 0; bottom: 0; left: 50%;
+      width: 2px; margin-left: -1px; z-index: 5;
+      background: rgba(255, 60, 60, 0.7); pointer-events: none;
+    }
   </style>
 </head>
 <body>
   <canvas id="app"></canvas>
+  <div id="centerline"></div>
 
   <div id="start">
     <h1>Stereo Hello World</h1>
@@ -37,103 +46,6 @@
     <div id="hint">iOS will ask permission to use motion sensors — tap Allow.</div>
   </div>
 
-  <!-- Three.js r132 core + the two example scripts we depend on, as plain globals. -->
-  <script src="https://unpkg.com/three@0.132.2/build/three.min.js"></script>
-  <script src="https://unpkg.com/three@0.132.2/examples/js/effects/StereoEffect.js"></script>
-  <script src="https://unpkg.com/three@0.132.2/examples/js/controls/DeviceOrientationControls.js"></script>
-
-  <script>
-    // ---- Scene setup ---------------------------------------------------------
-    const canvas = document.getElementById('app');
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-    renderer.setPixelRatio(window.devicePixelRatio || 1);
-
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x101018);
-    scene.fog = new THREE.Fog(0x101018, 1, 30);
-
-    // Camera sits at ~eye height. DeviceOrientationControls will rotate it.
-    const camera = new THREE.PerspectiveCamera(70, 1, 0.1, 100);
-    camera.position.set(0, 1.6, 0);
-
-    // StereoEffect renders the scene twice (one per eye), side by side.
-    const stereo = new THREE.StereoEffect(renderer);
-
-    // ---- Lights --------------------------------------------------------------
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x223344, 0.9));
-    const key = new THREE.DirectionalLight(0xffffff, 0.6);
-    key.position.set(3, 10, 4);
-    scene.add(key);
-
-    // ---- A floor so you have a sense of "down" and scale ---------------------
-    const floor = new THREE.Mesh(
-      new THREE.PlaneGeometry(60, 60, 60, 60),
-      new THREE.MeshBasicMaterial({ color: 0x223040, wireframe: true })
-    );
-    floor.rotation.x = -Math.PI / 2;
-    scene.add(floor);
-
-    // ---- A ring of floating cubes to look around at -------------------------
-    const cubes = [];
-    const cubeGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
-    const COUNT = 8, RADIUS = 5;
-    for (let i = 0; i < COUNT; i++) {
-      const angle = (i / COUNT) * Math.PI * 2;
-      const mat = new THREE.MeshStandardMaterial({
-        color: new THREE.Color().setHSL(i / COUNT, 0.6, 0.55),
-        roughness: 0.4, metalness: 0.1,
-      });
-      const cube = new THREE.Mesh(cubeGeo, mat);
-      cube.position.set(Math.cos(angle) * RADIUS, 1.6, Math.sin(angle) * RADIUS);
-      scene.add(cube);
-      cubes.push(cube);
-    }
-
-    // ---- Resize handling -----------------------------------------------------
-    function resize() {
-      const w = window.innerWidth, h = window.innerHeight;
-      camera.aspect = w / h;
-      camera.updateProjectionMatrix();
-      renderer.setSize(w, h);
-      stereo.setSize(w, h);
-    }
-    window.addEventListener('resize', resize);
-    resize();
-
-    // ---- Render loop ---------------------------------------------------------
-    let controls = null;
-    function animate() {
-      requestAnimationFrame(animate);
-      for (const c of cubes) { c.rotation.x += 0.01; c.rotation.y += 0.013; }
-      if (controls) controls.update();
-      stereo.render(scene, camera);
-    }
-    animate();
-
-    // ---- Entry flow: user gesture -> (iOS permission) -> motion control ------
-    const startEl = document.getElementById('start');
-    const enterBtn = document.getElementById('enter');
-
-    async function enterVR() {
-      // iOS 13+ requires an explicit, gesture-triggered permission grant.
-      const DOE = window.DeviceOrientationEvent;
-      if (DOE && typeof DOE.requestPermission === 'function') {
-        try {
-          const state = await DOE.requestPermission();
-          if (state !== 'granted') {
-            alert('Motion access denied — head tracking will not work.');
-          }
-        } catch (e) {
-          alert('Could not request motion access. Are you on HTTPS?');
-        }
-      }
-      controls = new THREE.DeviceOrientationControls(camera);
-      startEl.style.display = 'none';
-      // iOS sometimes needs a nudge after layout settles.
-      setTimeout(resize, 100);
-    }
-
-    enterBtn.addEventListener('click', enterVR);
-  </script>
+  <script type="module" src="/main.js"></script>
 </body>
 </html>

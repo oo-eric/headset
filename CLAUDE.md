@@ -18,13 +18,18 @@ sources: `references/phone-vr-platform-notes.md`.
 
 ## Stack
 
-- **Three.js `0.132.2`**, loaded from CDN as plain global `<script>` tags — **no build step,
-  no npm, no bundler.** Edit HTML, refresh browser.
-- **`StereoEffect`** — splits the canvas into two side-by-side eye views.
-- **`DeviceOrientationControls`** — turns phone motion into camera rotation.
-- Version 0.132.2 is pinned deliberately: it's the last version that ships *both* of those as
-  non-module `examples/js/*` scripts. Newer versions removed `DeviceOrientationControls`.
-  Don't bump Three.js without re-checking CDN availability of those two files.
+- **Yarn** for package management, **Vite** as the dev server / bundler. Each experiment is
+  its own Vite project (own `package.json`). `yarn dev` to run.
+- **Three.js `0.132.2`**, imported as an ES module (`import * as THREE from 'three'`).
+- **`StereoEffect`** (`three/examples/jsm/effects/StereoEffect.js`) — splits the canvas into
+  two side-by-side eye views.
+- **`DeviceOrientationControls`** (`three/examples/jsm/controls/DeviceOrientationControls.js`)
+  — turns phone motion into camera rotation.
+- Version 0.132.2 is pinned deliberately: it's the last version that ships *both* of those in
+  `examples/jsm/`. Newer versions removed `DeviceOrientationControls`. Don't bump Three.js
+  without re-checking that both modules still exist.
+- **HTTPS in dev** comes from `@vitejs/plugin-basic-ssl` (auto self-signed cert) + `host: true`
+  in `vite.config.js`, so the phone can load it over the LAN with motion sensors enabled.
 
 ## iOS gotchas (these will bite — handle them)
 
@@ -45,5 +50,6 @@ Each experiment lives in its own top-level directory, self-contained.
 
 ## Running / testing on the phone
 
-See `hello-world/README.md`. In short: serve the directory over HTTPS on the LAN, open the
-URL in the phone browser, tap "Enter VR," drop the phone in the headset.
+From an experiment directory: `yarn install` then `yarn dev`. Vite prints a `Network:`
+HTTPS URL (e.g. `https://<lan-ip>:8443/`) — open that on the phone, accept the self-signed
+cert warning once, tap "Enter VR," drop the phone in the headset. See `hello-world/README.md`.
