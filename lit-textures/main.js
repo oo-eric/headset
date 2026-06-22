@@ -69,44 +69,32 @@ key.position.set(4, 8, 2);
 key.castShadow = true;
 // The light orbits, so the shadow camera (an ortho box aimed at the origin)
 // must be big enough to cover the whole sphere cloud from any angle.
-key.shadow.mapSize.set(1024, 1024);                 // bump to 2048 for crisper edges
+// Frustum is sized to span the whole radius-40 globe so truck shadows reach its
+// wall; 2048 map keeps that larger area from going blocky.
+key.shadow.mapSize.set(2048, 2048);
 key.shadow.camera.near = 0.5;
-key.shadow.camera.far = 40;
-key.shadow.camera.left = key.shadow.camera.bottom = -16;
-key.shadow.camera.right = key.shadow.camera.top = 16;
+key.shadow.camera.far = 85;                          // reach the far wall of the globe
+key.shadow.camera.left = key.shadow.camera.bottom = -42;
+key.shadow.camera.right = key.shadow.camera.top = 42;
+key.shadow.camera.updateProjectionMatrix(); // REQUIRED — bounds above are ignored without this
 key.shadow.normalBias = 0.02;                        // kills acne on the curved spheres
 scene.add(key);
 
 // ---- Enclosing globe — you're inside it ------------------------------------
-// A big inverted sphere (BackSide renders the inner faces). Unlit + fog:false so
-// its lat/long grid stays visible all the way out at radius 40; its base color is
-// FOG_COLOR, so the haze on distant spheres/trucks dissolves seamlessly into the
-// shell. Net effect: hazy midground objects, a crisp gridded globe far behind.
-const globeTex = (() => {
-  const c = document.createElement('canvas');
-  c.width = 1024; c.height = 512;                     // 2:1 → equirectangular wrap
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = '#0c0e12'; ctx.fillRect(0, 0, c.width, c.height); // == FOG_COLOR
-  ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(120,150,200,0.30)';
-  for (let i = 1; i < 12; i++) {                      // latitudes (horizontal lines)
-    const y = (i / 12) * c.height;
-    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(c.width, y); ctx.stroke();
-  }
-  for (let i = 0; i < 24; i++) {                      // longitudes (vertical lines)
-    const x = (i / 24) * c.width;
-    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, c.height); ctx.stroke();
-  }
-  ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(150,185,235,0.55)';    // brighter equator
-  ctx.beginPath(); ctx.moveTo(0, c.height / 2); ctx.lineTo(c.width, c.height / 2); ctx.stroke();
-  const t = new THREE.CanvasTexture(c);
-  t.encoding = THREE.sRGBEncoding;
-  return t;
-})();
+// A big inverted sphere (BackSide renders the inner faces), a flat 50% grey and
+// LIT, so it acts as a backdrop the trucks can cast shadows onto. fog:false keeps
+// the grey uniform across the whole shell, so shadows read clearly instead of
+// dissolving into the haze. (For shadows to actually land out here, the light's
+// shadow camera is sized to reach the globe — see the key light above.)
 const globe = new THREE.Mesh(
   new THREE.SphereGeometry(40, 64, 48),
-  new THREE.MeshBasicMaterial({ map: globeTex, side: THREE.BackSide, fog: false })
+  new THREE.MeshStandardMaterial({
+    color: 0x808080, roughness: 1.0, metalness: 0.0,
+    side: THREE.BackSide, fog: false,
+  })
 );
-globe.position.set(0, 1.6, 0);                        // centered on the viewer's eye
+globe.position.set(0, 1.6, 0);   // centered on the viewer's eye
+globe.receiveShadow = true;      // catches the trucks' (and spheres') shadows
 scene.add(globe);
 
 // ---- Stereo rendering with a lens-centering offset -------------------------

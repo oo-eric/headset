@@ -47,6 +47,21 @@ function projectsApi() {
   };
 }
 
+// Build inputs: the root launcher plus every experiment dir that has an index.html.
+// Mirrors the dev projectsApi discovery so `yarn build` (root as Vite root) emits a
+// single multi-page bundle — `three` is shared across pages, assets are hashed, and
+// each experiment lands at dist/<dir>/index.html with its script rewritten to /assets/.
+function buildInputs() {
+  const root = process.cwd();
+  const inputs = { launcher: path.resolve(root, 'index.html') };
+  for (const d of fs.readdirSync(root, { withFileTypes: true })) {
+    if (!d.isDirectory() || d.name.startsWith('.') || IGNORE.has(d.name)) continue;
+    const html = path.join(root, d.name, 'index.html');
+    if (fs.existsSync(html)) inputs[d.name] = html;
+  }
+  return inputs;
+}
+
 export default defineConfig({
   plugins: [...(useSsl ? [basicSsl()] : []), projectsApi()],
   server: {
@@ -54,5 +69,10 @@ export default defineConfig({
     port: 8443,
     // Tunnel hostnames (e.g. *.trycloudflare.com) differ from localhost; allow them.
     allowedHosts: true,
+  },
+  build: {
+    outDir: 'dist',
+    emptyOutDir: true,
+    rollupOptions: { input: buildInputs() },
   },
 });
