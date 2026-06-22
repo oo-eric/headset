@@ -14,9 +14,11 @@ const useSsl = !process.env.NO_SSL;
 // Dirs that are never experiments, so they stay out of the launcher list.
 const IGNORE = new Set(['node_modules', 'references', 'assets', 'ios', 'dist']);
 
-// A tiny mock API the iOS launcher app reads: GET /projects.json -> every top-level
-// directory that has an index.html, as { name, path, title }. Scans the repo root
+// A tiny API the iOS launcher app reads: GET /api -> every top-level directory that has
+// an index.html, as { projects: [{ name, path, title }] }. Scans the repo root
 // (process.cwd()), so run `yarn dev` from the root to serve all experiments at /<dir>/.
+// In dev it's middleware; in a build it's emitted as a static `dist/api` file so the
+// same endpoint works on prod (vr.pinecone.website/api) where there's no live server.
 function projectsApi() {
   const listProjects = () => {
     const root = process.cwd();
@@ -35,14 +37,20 @@ function projectsApi() {
       });
   };
 
+  const payload = () => JSON.stringify({ projects: listProjects() }, null, 2);
+
   return {
     name: 'projects-api',
     configureServer(server) {
-      server.middlewares.use('/projects.json', (_req, res) => {
+      server.middlewares.use('/api', (_req, res) => {
         res.setHeader('Content-Type', 'application/json');
         res.setHeader('Access-Control-Allow-Origin', '*');
-        res.end(JSON.stringify({ projects: listProjects() }, null, 2));
+        res.end(payload());
       });
+    },
+    // Emit a static /api for the production build (no live server on prod).
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'api', source: payload() });
     },
   };
 }

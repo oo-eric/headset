@@ -71,6 +71,36 @@ It builds, ensures the webroot, installs/enables the nginx vhost
 reuses the `*.pinecone.website` wildcard cert), and rsyncs the build. Needs the droplet SSH
 key loaded (`ssh-add ~/.ssh/id_ed25519`) and your sudo password for the one-time nginx setup.
 
+## Native iOS shell (`ios/`)
+
+A thin SwiftUI app (`KaraokeVR`) that hosts the same web experiments in a fullscreen
+`WKWebView`. It exists to solve one hard iOS limitation: **`WKWebView` never delivers
+`deviceorientation` events to JavaScript** (verified on iOS 26), even with motion access
+granted — so the page's `DeviceOrientationControls` gets nothing and head tracking dies. The
+shell works around that:
+
+- **`MotionBridge`** reads the gyro natively via **CoreMotion** and pushes the device attitude
+  quaternion into the page every frame. The page is loaded with `?native=1` and drives its
+  camera from `window.__nativeOrientation(w, x, y, z)` instead of the dead web event path.
+  (The web entry flow still works in mobile Safari — this is only for the native shell.)
+- **Headset chrome** the browser can't give you: landscape lock, no status bar / home
+  indicator, scroll/zoom/bounce disabled, and audio autoplay (for karaoke).
+- **`LauncherView`** reads `/projects.json` from a configurable host and lists the experiments;
+  tap one to open it fullscreen.
+
+It's a **dev client**, pointed at the Vite dev server — directly over the LAN (it trusts the
+self-signed cert) or via a cloudflared tunnel (set the host in the launcher's text field).
+`/projects.json` is the dev-server middleware, so the app talks to `yarn dev`, not the static
+`vr.pinecone.website` build. The self-signed-cert trust and `NSAllowsArbitraryLoads` are
+**DEV ONLY** — don't ship them.
+
+**Build it:** open `ios/KaraokeVR.xcodeproj` in Xcode, set your signing team, and run on a
+device (iOS 16+, bundle id `com.rackandpinecone.KaraokeVR`). Then start `yarn dev` at the repo
+root and point the launcher at the printed `Network:` URL.
+
+> Note: the native motion bridge (`?native=1` / `window.__nativeOrientation`) is currently
+> wired into `hello-world`; the other experiments still use the web event path.
+
 ## Notes & limits
 
 - **Rotation only, no positional tracking** — these headsets sense head _orientation_, not
