@@ -25,6 +25,12 @@ const HARDCODED_EXPERIENCES = [
     desc: 'PBR materials + image-based lighting in stereo.',
     path: '/lit-textures/',
   },
+  {
+    slug: 'karaoke',
+    title: 'Karaoke',
+    desc: 'Heads-up lyrics sweeping word-by-word over a head-tracked world.',
+    path: '/karaoke/',
+  },
 ];
 
 // Single source of the list. Today: return the hardcoded array.

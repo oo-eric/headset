@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Lists the experiments the dev server is serving and opens the chosen one fullscreen.
+/// Lists the experiments the site's /api serves and opens the chosen one fullscreen.
+/// Defaults to prod; override the host to point at a `yarn dev` box on the LAN.
 struct LauncherView: View {
     @AppStorage("serverHost") private var host = "https://vr.pinecone.website"
     @StateObject private var client = ServerClient()
@@ -9,7 +10,7 @@ struct LauncherView: View {
     var body: some View {
         NavigationStack {
             List {
-                Section("Dev server") {
+                Section("Server") {
                     HStack {
                         TextField("host:port", text: $draftHost)
                             .textInputAutocapitalization(.never)
@@ -30,7 +31,7 @@ struct LauncherView: View {
 
                 Section("Experiments") {
                     if client.projects.isEmpty && !client.loading && client.error == nil {
-                        Text("No projects yet — make sure `yarn dev` is running at the repo root.")
+                        Text("No projects — check the host above (defaults to vr.pinecone.website).")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                     ForEach(client.projects) { project in

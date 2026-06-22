@@ -1,6 +1,6 @@
 import Foundation
 
-/// One experiment served by the dev server (mirrors /projects.json entries).
+/// One experiment served by the site's /api endpoint.
 struct Project: Identifiable, Decodable, Hashable {
     let name: String
     let path: String   // e.g. "/hello-world/"
@@ -54,8 +54,8 @@ final class ServerClient: ObservableObject {
 
     func load(host: String) async {
         guard let base = baseURL(host: host),
-              let url = URL(string: "/projects.json", relativeTo: base) else {
-            error = "Enter a host like 192.168.1.89:8443"
+              let url = URL(string: "/api", relativeTo: base) else {
+            error = "Enter a host like vr.pinecone.website"
             return
         }
         loading = true
